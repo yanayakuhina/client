@@ -1,0 +1,91 @@
+"""
+Nikitina N.V
+Client
+
+"""
+
+import socket
+import time
+
+
+class Client:
+    def __init__(self, host, port, timeout=None):
+        self.host = host
+        self.port = port
+        try:
+            self.connection = socket.create_connection((host, port), timeout)
+        except socket.error as err:
+            raise ConnectionRefusedError("Error with connection", err)
+
+    def read(self):
+        inf = b""
+        while not inf.endswith(b"\n\n"):
+            try:
+                inf = inf + self.connection.recv(1024)
+            except socket.error as err:
+                raise ClientSocketError("Error with socket", err)
+
+        inf_str = inf.decode()
+
+        first, other = inf_str.split("\n", 1)
+        other = other.strip()
+
+        if first == "error":
+            raise ClientProtocolError(other)
+
+        return other
+
+    def put(self, key, value, timestamp=None):
+        timestamp = timestamp or int(time.time())
+
+        try:
+            self.connection.sendall(
+                f"put {key} {value} {timestamp}\n".encode()
+            )
+        except socket.error as err:
+            raise ConnectionRefusedError("Error with connection", err)
+        self.read()
+
+    def get(self, key):
+        try:
+            self.connection.sendall(
+                f"get {key}\n".encode()
+            )
+        except socket.error as err:
+            raise ClientSocketError("Error", err)
+
+        inf = self.read()
+
+        data = {}
+        if inf == "":
+            return data
+
+        for row in inf.split("\n"):
+            key, value, timestamp = row.split()
+            if key not in data:
+                data[key] = []
+            data[key].append((int(timestamp), float(value)))
+
+        return data
+
+    def close(self):
+        try:
+            self.connection.close()
+        except socket.error as err:
+            raise ClientSocketError("Error with close", err)
+
+
+class ClientError(Exception):
+    pass
+
+
+class ConnectionRefusedError(ClientError):
+    pass
+
+
+class ClientSocketError(ClientError):
+    pass
+
+
+class ClientProtocolError(ClientError):
+    pass
